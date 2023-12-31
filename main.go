@@ -1,18 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net/http"
-	"os"
+	"text/template"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	page, err := os.ReadFile("pages/index.html")
+	tmpl, err := template.ParseFiles("pages/index.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	fmt.Fprint(w, string(page))
+	tmpl.Execute(w, nil)
 }
 
 func main() {
