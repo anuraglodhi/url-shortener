@@ -1,20 +1,21 @@
 package main
 
 import (
-	// "fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"text/template"
+
+	"github.com/lucsky/cuid"
 )
 
 var urls map[string]string = make(map[string]string)
 
 func handleRedirect(w http.ResponseWriter, r *http.Request) {
 	short := strings.Split(r.URL.Path, "/")[0]
-	
+
 	originalString, ok := urls[short]
 	originalurl, err := url.Parse(originalString)
 	if err != nil {
@@ -47,9 +48,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func handleShorten(w http.ResponseWriter, r *http.Request) {
 	url := r.PostFormValue("url")
-	short := url[:3]
+	short := cuid.Slug()
 	urls[short] = url
-	io.WriteString(w, url + " shortened to " + short)
+	io.WriteString(w, url + " shortened to " + r.URL.Hostname() + "/" + short)
 }
 
 func main() {
