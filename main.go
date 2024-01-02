@@ -1,38 +1,43 @@
 package main
 
 import (
-	"io"
+	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"text/template"
+	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/lucsky/cuid"
 )
 
-var urls map[string]string = make(map[string]string)
+var db *sql.DB
 
 func handleRedirect(w http.ResponseWriter, r *http.Request) {
 	short := strings.Split(r.URL.Path, "/")[0]
 
-	originalString, ok := urls[short]
+	var originalString string
+	row := db.QueryRow(fmt.Sprintf("select longurl from urls where shorturl=\"%s\"", short))
+	err := row.Scan(&originalString)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
+
 	originalurl, err := url.Parse(originalString)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	
-	if ok {
-		if originalurl.Scheme == "" {
-			originalurl.Scheme = "http";
-		}
-		http.Redirect(w, r, originalurl.String(), http.StatusSeeOther)
-	} else { 
-		http.Error(w, "404 Not Found", http.StatusNotFound)
+
+	if originalurl.Scheme == "" {
+		originalurl.Scheme = "http"
 	}
+	http.Redirect(w, r, originalurl.String(), http.StatusSeeOther)
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func handleIndexPage(w http.ResponseWriter, r *http.Request) {
 	url := strings.TrimPrefix(r.URL.Path, "/")
 	if url != "" {
 		r.URL.Path = url
@@ -48,13 +53,45 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func handleShorten(w http.ResponseWriter, r *http.Request) {
 	url := r.PostFormValue("url")
-	short := cuid.Slug()
-	urls[short] = url
-	io.WriteString(w, url + " shortened to " + r.URL.Hostname() + "/" + short)
+	var short string
+
+	row := db.QueryRow(fmt.Sprintf("select shorturl from urls where longurl=\"%s\"", url))
+	err := row.Scan(&short)
+	if err != nil {
+		println(err.Error())
+		for {
+			short = cuid.Slug()
+			_, err := db.Query(fmt.Sprintf("select * from urls where shorturl=\"%s\"", short))
+			if err == nil {
+				break
+			}
+		}
+		_, err = db.Query(fmt.Sprintf("insert into urls values (\"%s\", \"%s\")", short, url))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	link := "http://localhost:8080/" + short
+	tmpl, err := template.New("shortlink").Parse("Short link: <a href='" + link + "'>" + link + "</>")
+	if err != nil {
+		http.Error(w, "Link could not be generated. Try again", http.StatusInternalServerError)
+	}
+	tmpl.Execute(w, nil)
 }
 
 func main() {
-	http.HandleFunc("/", handler)
+	var err error
+	dbConfig := mysql.Config{User: "root", Passwd: "anurag", Net: "tcp", Addr: "0.0.0.0:3306", DBName: "urldb"}
+	db, err = sql.Open("mysql", dbConfig.FormatDSN())
+	if err != nil {
+		panic(err)
+	}
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
+
+	http.HandleFunc("/", handleIndexPage)
 	http.HandleFunc("/shorten", handleShorten)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	log.Fatal(http.ListenAndServe(":8080", nil))
