@@ -58,11 +58,12 @@ func handleShorten(w http.ResponseWriter, r *http.Request) {
 	row := db.QueryRow(fmt.Sprintf("select shorturl from urls where longurl=\"%s\"", url))
 	err := row.Scan(&short)
 	if err != nil {
-		println(err.Error())
 		for {
 			short = cuid.Slug()
-			_, err := db.Query(fmt.Sprintf("select * from urls where shorturl=\"%s\"", short))
-			if err == nil {
+			row := db.QueryRow(fmt.Sprintf("select count(*) from urls where shorturl=\"%s\"", short))
+			var count int
+			row.Scan(&count)
+			if count == 0 {
 				break
 			}
 		}
