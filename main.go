@@ -92,8 +92,11 @@ func main() {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
 
-	http.HandleFunc("/", handleIndexPage)
-	http.HandleFunc("/shorten", handleShorten)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	r := http.NewServeMux()
+
+	r.HandleFunc("/", handleIndexPage)
+	r.HandleFunc("/shorten", handleShorten)
+	r.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
+	log.Fatal(http.ListenAndServe(":8080", r))
 }
