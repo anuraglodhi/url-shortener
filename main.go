@@ -1,32 +1,27 @@
 package main
 
 import (
-	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"text/template"
-	"time"
 
-	"github.com/go-sql-driver/mysql"
+	"github.com/AnuragLodhi/urlshortener/database"
 	"github.com/lucsky/cuid"
 )
 
-var db *sql.DB
+var db database.Database
 
 func handleRedirect(w http.ResponseWriter, r *http.Request) {
 	short := strings.Split(r.URL.Path, "/")[0]
 
-	var originalString string
-	row := db.QueryRow(fmt.Sprintf("select longurl from urls where shorturl=\"%s\"", short))
-	err := row.Scan(&originalString)
+	longUrl, err := db.GetLongUrl(short)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	originalurl, err := url.Parse(originalString)
+	originalurl, err := url.Parse(longUrl)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -53,23 +48,22 @@ func handleIndexPage(w http.ResponseWriter, r *http.Request) {
 
 func handleShorten(w http.ResponseWriter, r *http.Request) {
 	url := r.PostFormValue("url")
-	var short string
 
-	row := db.QueryRow(fmt.Sprintf("select shorturl from urls where longurl=\"%s\"", url))
-	err := row.Scan(&short)
+	short, err := db.GetShortUrl(url)
 	if err != nil {
 		for {
 			short = cuid.Slug()
-			row := db.QueryRow(fmt.Sprintf("select count(*) from urls where shorturl=\"%s\"", short))
-			var count int
-			row.Scan(&count)
-			if count == 0 {
+			exists, err := db.ShortUrlExists(short)
+			if err != nil {
+				http.Error(w, "Link could not be generated. Try again", http.StatusInternalServerError)
+			}
+			if !exists {
 				break
 			}
 		}
-		_, err = db.Query(fmt.Sprintf("insert into urls values (\"%s\", \"%s\")", short, url))
+		err = db.InsertUrl(short, url)
 		if err != nil {
-			panic(err)
+			http.Error(w, "Link could not be generated. Try again", http.StatusInternalServerError)
 		}
 	}
 
@@ -82,15 +76,7 @@ func handleShorten(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	var err error
-	dbConfig := mysql.Config{User: "root", Passwd: "anurag", Net: "tcp", Addr: "0.0.0.0:3306", DBName: "urldb"}
-	db, err = sql.Open("mysql", dbConfig.FormatDSN())
-	if err != nil {
-		panic(err)
-	}
-	db.SetConnMaxLifetime(time.Minute * 3)
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
+	db = database.New()
 
 	r := http.NewServeMux()
 
