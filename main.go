@@ -68,7 +68,7 @@ func handleShorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	link := "http://localhost:8080/" + short
-	tmpl, err := template.New("shortlink").Parse("Short link: <a href='" + link + "'>" + link + "</>")
+	tmpl, err := template.New("shortlink").Parse("Short link:&nbsp;<a href='" + link + "'>" + link + "</>")
 	if err != nil {
 		http.Error(w, "Link could not be generated. Try again", http.StatusInternalServerError)
 	}
@@ -82,7 +82,7 @@ func main() {
 
 	r.HandleFunc("/", handleIndexPage)
 	r.HandleFunc("/shorten", handleShorten)
-	r.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	r.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
